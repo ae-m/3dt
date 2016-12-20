@@ -8,6 +8,8 @@ import (
 	"net/http/httputil"
 	"os"
 	"path/filepath"
+	"net"
+	"strconv"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
@@ -260,10 +262,20 @@ func downloadBundleHandler(w http.ResponseWriter, r *http.Request, dt Dt) {
 		director := func(req *http.Request) {
 			req = r
 			req.URL.Scheme = scheme
-			req.URL.Host = fmt.Sprintf("%s:%d", node, dt.Cfg.FlagPort)
+			req.URL.Host = net.JoinHostPort(node, strconv.Itoa(dt.Cfg.FlagMasterPort))
 			req.URL.Path = location
 		}
 		proxy := &httputil.ReverseProxy{Director: director}
+		caPool, err := loadCAPool(dt.Cfg)
+		if err != nil {
+			log.Errorf("Couldn't load CAPool: %s", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		if caPool != nil {
+			proxy.Transport = NewSecureTransport(caPool)
+		}
 		proxy.ServeHTTP(w, r)
 		return
 	}
